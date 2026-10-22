@@ -1,0 +1,8 @@
+# Secrets — the server's real values live in .env, never commit it
+.env
+.env.*
+!.env.example
+
+.DS_Store
+.idea
+.vscode
