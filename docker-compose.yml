@@ -1,6 +1,27 @@
 # Volumes are prefixed with the project name (signestate_api-data,
-# signestate_letsencrypt), so renaming it starts from empty data and new certs.
+# signestate_postgres-data, signestate_letsencrypt), so renaming it starts from
+# empty data and new certs.
 name: signestate
+
+# Shared by the backend and its one-shot migrate job: same image, same settings
+# (be/app/backend/core/config.py validates them on import, alembic included).
+x-backend: &backend
+  build:
+    context: ../be
+    dockerfile: Dockerfile.backend
+  environment:
+    ENV: ${BE_ENV:-stage}
+    DB_HOST: postgres
+    DB_PORT: 5432
+    DB_USER: ${DB_USER:-postgres}
+    DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in infra/.env}
+    DB_NAME: ${DB_NAME:-signestate}
+    CORS_ORIGINS: '["https://${APP_DOMAIN:-localhost}"]'
+    DOCS_USERNAME: ${DOCS_USERNAME:-signestate}
+    DOCS_PASSWORD: ${DOCS_PASSWORD:?Set DOCS_PASSWORD in infra/.env}
+    # Trust Traefik's X-Forwarded-* headers (the container is only reachable
+    # through it), so uvicorn sees https and builds redirects with it.
+    FORWARDED_ALLOW_IPS: "*"
 
 services:
   traefik:
@@ -31,6 +52,8 @@ services:
       - letsencrypt:/letsencrypt
     restart: unless-stopped
 
+  # ── Frontend (../signestate) ────────────────────────────────────────────────
+
   web:
     build:
       # The parent folder, so the build sees both ../signestate and this folder.
@@ -48,6 +71,7 @@ services:
       - traefik.http.services.web.loadbalancer.server.port=80
     restart: unless-stopped
 
+  # The json-server mock (../signestate/server.js) the frontend still calls.
   api:
     build:
       context: ..
@@ -63,19 +87,57 @@ services:
       - traefik.http.routers.api.tls.certresolver=le
       - traefik.http.routers.api.middlewares=api-strip
       - traefik.http.middlewares.api-strip.stripprefix.prefixes=/api
-      # Its own domain: https://${API_DOMAIN}/* -> api:3001/*. The strip is a
-      # no-op for other paths and keeps the /api/uploads/<name> URLs the mock
-      # returns working here too.
-      - traefik.http.routers.api-domain.rule=Host(`${API_DOMAIN:-api-qa.elitekosova.com}`)
-      - traefik.http.routers.api-domain.entrypoints=websecure
-      - traefik.http.routers.api-domain.tls.certresolver=le
-      - traefik.http.routers.api-domain.middlewares=api-strip
-      - traefik.http.routers.api-domain.service=api
       - traefik.http.services.api.loadbalancer.server.port=3001
+    restart: unless-stopped
+
+  # ── Backend (../be) ─────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in infra/.env}
+      POSTGRES_DB: ${DB_NAME:-signestate}
+    volumes:
+      # Postgres 18+ images keep data in a versioned subdirectory of this path.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # Applies pending migrations and exits; the backend starts only if it succeeds.
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # The image's HEALTHCHECK probes the API, which this container never serves.
+    healthcheck:
+      disable: true
+    restart: "no"
+
+  backend:
+    <<: *backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    labels:
+      - traefik.enable=true
+      # The whole domain: https://${API_DOMAIN}/api/v1/..., /docs, /redoc.
+      - traefik.http.routers.backend.rule=Host(`${API_DOMAIN:-api-qa.elitekosova.com}`)
+      - traefik.http.routers.backend.entrypoints=websecure
+      - traefik.http.routers.backend.tls.certresolver=le
+      - traefik.http.services.backend.loadbalancer.server.port=8080
     restart: unless-stopped
 
 volumes:
   # Holds db.json and uploaded images. `docker compose down -v` resets it to the seed data.
   api-data:
+  # The backend's database. `docker compose down -v` deletes it.
+  postgres-data:
   # Issued certificates (acme.json). Keep it to avoid hitting Let's Encrypt rate limits.
   letsencrypt:
