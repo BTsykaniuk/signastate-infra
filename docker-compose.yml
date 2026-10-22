@@ -3,22 +3,27 @@
 # empty data and new certs.
 name: signestate
 
+# The app repos are cloned inside this folder (git-ignored here):
+#   git clone git@github.com:BTsykaniuk/signestate.git
+#   git clone git@github.com:BTsykaniuk/signastate-be.git
+# Somewhere else? Point FE_DIR / BE_DIR in .env at them, relative to this folder.
+
 # Shared by the backend and its one-shot migrate job: same image, same settings
-# (be/app/backend/core/config.py validates them on import, alembic included).
+# (app/backend/core/config.py in the be repo validates them on import, alembic included).
 x-backend: &backend
   build:
-    context: ../be
+    context: ${BE_DIR:-./signastate-be}
     dockerfile: Dockerfile.backend
   environment:
     ENV: ${BE_ENV:-stage}
     DB_HOST: postgres
     DB_PORT: 5432
     DB_USER: ${DB_USER:-postgres}
-    DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in infra/.env}
+    DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     DB_NAME: ${DB_NAME:-signestate}
     CORS_ORIGINS: '["https://${APP_DOMAIN:-localhost}"]'
     DOCS_USERNAME: ${DOCS_USERNAME:-signestate}
-    DOCS_PASSWORD: ${DOCS_PASSWORD:?Set DOCS_PASSWORD in infra/.env}
+    DOCS_PASSWORD: ${DOCS_PASSWORD:?Set DOCS_PASSWORD in .env}
     # Trust Traefik's X-Forwarded-* headers (the container is only reachable
     # through it), so uvicorn sees https and builds redirects with it.
     FORWARDED_ALLOW_IPS: "*"
@@ -52,13 +57,14 @@ services:
       - letsencrypt:/letsencrypt
     restart: unless-stopped
 
-  # ── Frontend (../signestate) ────────────────────────────────────────────────
+  # ── Frontend (signestate repo) ──────────────────────────────────────────────
 
   web:
     build:
-      # The parent folder, so the build sees both ../signestate and this folder.
-      context: ..
-      dockerfile: infra/Dockerfile
+      # This folder for nginx.conf; the frontend repo as the `signestate` context.
+      context: .
+      additional_contexts:
+        signestate: ${FE_DIR:-./signestate}
       target: web
       args:
         VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
@@ -71,11 +77,12 @@ services:
       - traefik.http.services.web.loadbalancer.server.port=80
     restart: unless-stopped
 
-  # The json-server mock (../signestate/server.js) the frontend still calls.
+  # The json-server mock (server.js in the signestate repo) the frontend still calls.
   api:
     build:
-      context: ..
-      dockerfile: infra/Dockerfile
+      context: .
+      additional_contexts:
+        signestate: ${FE_DIR:-./signestate}
       target: api
     volumes:
       - api-data:/app/data
@@ -90,13 +97,13 @@ services:
       - traefik.http.services.api.loadbalancer.server.port=3001
     restart: unless-stopped
 
-  # ── Backend (../be) ─────────────────────────────────────────────────────────
+  # ── Backend (signastate-be repo) ────────────────────────────────────────────
 
   postgres:
     image: postgres:18
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in infra/.env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       POSTGRES_DB: ${DB_NAME:-signestate}
     volumes:
       # Postgres 18+ images keep data in a versioned subdirectory of this path.

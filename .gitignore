@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# The app repos, cloned in here on the server (see docker-compose.yml)
+/signestate/
+/signastate-be/
+
 .DS_Store
 .idea
 .vscode

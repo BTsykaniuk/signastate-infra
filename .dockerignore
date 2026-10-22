@@ -1,0 +1,4 @@
+# The build context is this folder, and only nginx.conf is copied from it.
+# Allow-list it so .env (secrets) and .git never reach the build.
+*
+!nginx.conf

@@ -4,7 +4,7 @@
 COMPOSE := docker compose
 
 # Service names in docker-compose.yml, grouped by the repo they're built from:
-# ../signestate gives the SPA and the json-server mock, ../be the FastAPI backend.
+# signestate gives the SPA and the json-server mock, signastate-be the FastAPI backend.
 FE := web api
 BE := backend
 
