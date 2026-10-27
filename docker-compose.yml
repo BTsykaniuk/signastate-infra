@@ -21,7 +21,8 @@ x-backend: &backend
     DB_USER: ${DB_USER:-postgres}
     DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     DB_NAME: ${DB_NAME:-signestate}
-    CORS_ORIGINS: '["https://${APP_DOMAIN:-localhost}"]'
+    # Defaults to the frontend's own domain. Set CORS_ORIGINS in .env to replace it.
+    CORS_ORIGINS: '${CORS_ORIGINS:-["https://${APP_DOMAIN:-localhost}"]}'
     DOCS_USERNAME: ${DOCS_USERNAME:-signestate}
     DOCS_PASSWORD: ${DOCS_PASSWORD:?Set DOCS_PASSWORD in .env}
     # Trust Traefik's X-Forwarded-* headers (the container is only reachable
