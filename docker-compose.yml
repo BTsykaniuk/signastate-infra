@@ -35,12 +35,15 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      - --providers.file.filename=/etc/traefik/tls.yml
       # HTTP only answers Let's Encrypt challenges and redirects everything else to HTTPS.
       - --entrypoints.web.address=:80
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
       - --entrypoints.web.http.redirections.entrypoint.permanent=true
       - --entrypoints.websecure.address=:443
+      # Postgres for clients outside the server, TLS only (see the postgres labels).
+      - --entrypoints.postgres.address=:5432
       # Let's Encrypt via the HTTP-01 challenge (needs port 80 reachable from the internet).
       - --certificatesresolvers.le.acme.email=${ACME_EMAIL:-}
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
@@ -52,9 +55,11 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "${DB_PUBLIC_PORT:-5432}:5432"
       - "127.0.0.1:${DASHBOARD_PORT:-8080}:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik-tls.yml:/etc/traefik/tls.yml:ro
       - letsencrypt:/letsencrypt
     restart: unless-stopped
 
@@ -114,6 +119,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    labels:
+      - traefik.enable=true
+      # Public on ${DB_DOMAIN}:${DB_PUBLIC_PORT}, TLS only: Traefik answers the client's
+      # SSLRequest, terminates TLS with the Let's Encrypt cert and forwards plain TCP here.
+      # HostSNI(`*`) also lets in clients that send no SNI (they get Traefik's default cert);
+      # tls.domains is what gets the real cert issued.
+      - traefik.tcp.routers.postgres.rule=HostSNI(`*`)
+      - traefik.tcp.routers.postgres.entrypoints=postgres
+      - traefik.tcp.routers.postgres.tls.certresolver=le
+      - traefik.tcp.routers.postgres.tls.domains[0].main=${DB_DOMAIN:-${API_DOMAIN:-api-qa.elitekosova.com}}
+      # Accepts the "postgresql" ALPN newer clients send (traefik-tls.yml).
+      - traefik.tcp.routers.postgres.tls.options=postgres@file
+      - traefik.tcp.routers.postgres.middlewares=postgres-ips
+      - traefik.tcp.middlewares.postgres-ips.ipallowlist.sourcerange=${DB_ALLOWED_IPS:-0.0.0.0/0,::/0}
+      - traefik.tcp.services.postgres.loadbalancer.server.port=5432
     restart: unless-stopped
 
   # Applies pending migrations and exits; the backend starts only if it succeeds.

@@ -1,0 +1,9 @@
+# Traefik dynamic config that Docker labels can't express (TLS options), loaded
+# by the file provider in docker-compose.yml.
+tls:
+  options:
+    # Postgres 17+ clients offer ALPN "postgresql" and Traefik's default list is
+    # HTTP-only, so without this the handshake fails with "no application protocol".
+    postgres:
+      alpnProtocols:
+        - postgresql
