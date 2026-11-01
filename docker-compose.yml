@@ -25,6 +25,18 @@ x-backend: &backend
     CORS_ORIGINS: '${CORS_ORIGINS:-["https://${APP_DOMAIN:-localhost}"]}'
     DOCS_USERNAME: ${DOCS_USERNAME:-signestate}
     DOCS_PASSWORD: ${DOCS_PASSWORD:?Set DOCS_PASSWORD in .env}
+    # Links in emails (password reset) open the frontend. Defaults to its own domain.
+    FRONTEND_URL: ${FRONTEND_URL:-https://${APP_DOMAIN:-localhost}}
+    SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+    PASSWORD_RESET_TTL_MINUTES: ${PASSWORD_RESET_TTL_MINUTES:-30}
+    # Outgoing email (password reset, booking confirmations). Without SMTP_HOST the
+    # backend sends none and answers a password reset request with a 503.
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_USERNAME: ${SMTP_USERNAME:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+    EMAIL_FROM: "${EMAIL_FROM:-Signestate <no-reply@elitekosova.com>}"
     # Trust Traefik's X-Forwarded-* headers (the container is only reachable
     # through it), so uvicorn sees https and builds redirects with it.
     FORWARDED_ALLOW_IPS: "*"
