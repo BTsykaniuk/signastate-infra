@@ -1,4 +1,5 @@
-# The build context is this folder, and only nginx.conf is copied from it.
-# Allow-list it so .env (secrets) and .git never reach the build.
+# The build context is this folder, and only nginx.conf and api-trust-proxy.cjs
+# are copied from it. Allow-list them so .env (secrets) and .git never reach the build.
 *
 !nginx.conf
+!api-trust-proxy.cjs
