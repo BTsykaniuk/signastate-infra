@@ -95,22 +95,35 @@ services:
       - traefik.http.services.web.loadbalancer.server.port=80
     restart: unless-stopped
 
-  # The json-server mock (server.js in the signestate repo) the frontend still calls.
+  # The frontend's own Node server (server.js in the signestate repo) in its
+  # self-contained demo mode (ADR 0018 there). It answers everything the app
+  # calls: /api/v1 (demo accounts, listings, favorites, notaries, purchases)
+  # and /api (uploads, mortgage applications, the other mock resources).
+  # Nothing reaches the backend below. Demo logins: README in the signestate repo.
   api:
     build:
       context: .
       additional_contexts:
         signestate: ${FE_DIR:-./signestate}
       target: api
+    environment:
+      BACKEND_MODE: demo
     volumes:
       - api-data:/app/data
     labels:
       - traefik.enable=true
+      # /api/v1/* -> api:3001/api/v1/*, prefix kept: the demo API's routes include it.
+      # Traefik tries the longest rule first, so this one wins over /api below.
+      - traefik.http.routers.api-v1.rule=Host(`${APP_DOMAIN:-localhost}`) && PathPrefix(`/api/v1`)
+      - traefik.http.routers.api-v1.entrypoints=websecure
+      - traefik.http.routers.api-v1.tls.certresolver=le
+      - traefik.http.routers.api-v1.service=api
       # Same as the Vite dev proxy: /api/* -> api:3001/* with the prefix stripped.
       - traefik.http.routers.api.rule=Host(`${APP_DOMAIN:-localhost}`) && PathPrefix(`/api`)
       - traefik.http.routers.api.entrypoints=websecure
       - traefik.http.routers.api.tls.certresolver=le
       - traefik.http.routers.api.middlewares=api-strip
+      - traefik.http.routers.api.service=api
       - traefik.http.middlewares.api-strip.stripprefix.prefixes=/api
       - traefik.http.services.api.loadbalancer.server.port=3001
     restart: unless-stopped
@@ -175,7 +188,8 @@ services:
     restart: unless-stopped
 
 volumes:
-  # Holds db.json and uploaded images. `docker compose down -v` resets it to the seed data.
+  # Holds the demo database (demo/db.json) and uploaded files. `make reset-demo`
+  # reseeds the database from the current catalog and keeps the uploads.
   api-data:
   # The backend's database. `docker compose down -v` deletes it.
   postgres-data:

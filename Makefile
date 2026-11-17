@@ -1,10 +1,10 @@
-.PHONY: help up down ps logs logs-fe logs-be rebuild-all rebuild-fe rebuild-be
+.PHONY: help up down ps logs logs-fe logs-be rebuild-all rebuild-fe rebuild-be reset-demo
 
 # docker compose picks up docker-compose.yml and .env from this folder.
 COMPOSE := docker compose
 
 # Service names in docker-compose.yml, grouped by the repo they're built from:
-# signestate gives the SPA and the json-server mock, signastate-be the FastAPI backend.
+# signestate gives the SPA and its demo API server, signastate-be the FastAPI backend.
 FE := web api
 BE := backend
 
@@ -23,6 +23,9 @@ help:
 	@echo "    make rebuild-all          - Rebuild FE + BE images, migrate, restart them"
 	@echo "    make rebuild-fe           - Rebuild and restart the frontend only ($(FE))"
 	@echo "    make rebuild-be           - Rebuild the backend, run migrations, restart it"
+	@echo ""
+	@echo "  Demo data:"
+	@echo "    make reset-demo           - Reseed the demo database from the catalog (keeps uploads)"
 
 # ── Stack ─────────────────────────────────────────────────────────────────────
 
@@ -57,3 +60,12 @@ rebuild-fe:
 # so this rebuilds both images and applies migrations before the new backend starts.
 rebuild-be:
 	$(COMPOSE) up -d --build $(BE)
+
+# ── Demo data ─────────────────────────────────────────────────────────────────
+
+# The api container seeds demo/db.json from the frontend's db.json only when the
+# file is missing, so catalog changes in a new deploy need this to show up.
+# Demo accounts, sessions and purchases are reset too.
+reset-demo:
+	$(COMPOSE) exec api rm -f /app/data/demo/db.json
+	$(COMPOSE) restart api
